@@ -212,6 +212,12 @@ class CurrentPage {
         return
       }
 
+      // A close may start while the initial layer component is still resolving.
+      // Do not let the older initial write put that layer back on screen.
+      if (initialRender && layersOf(page).some((layer) => layerAt(this.page, layer.id)?.closing)) {
+        return
+      }
+
       return this.write(page, component, layers, options)
     })
   }

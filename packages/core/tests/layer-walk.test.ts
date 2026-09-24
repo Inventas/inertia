@@ -937,6 +937,56 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(currentPage.get().component).toBe('Users/Index')
   })
 
+  it('finishes a close started before the cold base walk lands', async () => {
+    await hold(loginPage)
+    answering({ '/login': layerAt('/users/5/edit', 'Users/Edit', '/users') })
+
+    await openCold()
+    await waitingForTheHop()
+
+    const [top] = currentPage.get().layers!
+    const closing = layerClosing.close(top.id)
+
+    await answer('/users', pageWith())
+    await layerClosing.closed(top.id)
+    await closing
+
+    await walked('Users/Index')
+    expect(currentPage.get().layers).toBeUndefined()
+    expect(currentPage.get().url).toBe('/users')
+  })
+
+  it('does not let the initial cold-page write erase a close started while the component resolves', async () => {
+    const response = layerAt('/users/5/edit', 'Users/Edit', '/users')
+    const cold = (await resolveInitialPage(response, (name) => ({ name }) as never)).page
+    let finishImport!: () => void
+    const importing = new Promise<void>((resolve) => (finishImport = resolve))
+    let imports = 0
+
+    currentPage.init({
+      initialPage: cold,
+      resolveComponent: (name) =>
+        (name === 'Users/Edit' && ++imports === 1
+          ? importing.then(() => ({ name }))
+          : { name }) as never,
+      swapComponent: async () => {},
+    })
+    answering({})
+
+    const initialWrite = currentPage.set(cold, { replace: true, initialRender: true })
+    const [top] = cold.layers!
+    const closing = layerClosing.close(top.id)
+
+    finishImport()
+    await initialWrite
+
+    expect(currentPage.get().layers?.[0]?.closing).toBe(true)
+
+    await layerClosing.closed(top.id)
+    await closing
+    expect(currentPage.get().layers).toBeUndefined()
+  })
+
   it('re-requests the blank base the closed layer was standing on, replacing its entry', async () => {
     const swaps: { component: string; preserveState: boolean }[] = []
 
