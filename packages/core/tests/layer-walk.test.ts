@@ -956,6 +956,35 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(currentPage.get().url).toBe('/users')
   })
 
+  it('keeps a close started while the cold base component resolves', async () => {
+    let finishImport!: () => void
+    const importing = new Promise<void>((resolve) => (finishImport = resolve))
+
+    currentPage.init({
+      initialPage: loginPage,
+      resolveComponent: (name) => (name === 'Users/Index' ? importing.then(() => ({ name })) : { name }) as never,
+      swapComponent: async () => {},
+    })
+    await currentPage.setQuietly(loginPage)
+    answering({ '/login': layerAt('/users/5/edit', 'Users/Edit', '/users') })
+
+    await openCold()
+    await waitingForTheHop()
+    await answer('/users', pageWith())
+
+    const [top] = currentPage.get().layers!
+    const closing = layerClosing.close(top.id)
+
+    finishImport()
+    await walked('Users/Index')
+
+    expect(currentPage.get().layers?.[0]?.closing).toBe(true)
+
+    await layerClosing.closed(top.id)
+    await closing
+    expect(currentPage.get().layers).toBeUndefined()
+  })
+
   it('does not let the initial cold-page write erase a close started while the component resolves', async () => {
     const response = layerAt('/users/5/edit', 'Users/Edit', '/users')
     const cold = (await resolveInitialPage(response, (name) => ({ name }) as never)).page
@@ -966,9 +995,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     currentPage.init({
       initialPage: cold,
       resolveComponent: (name) =>
-        (name === 'Users/Edit' && ++imports === 1
-          ? importing.then(() => ({ name }))
-          : { name }) as never,
+        (name === 'Users/Edit' && ++imports === 1 ? importing.then(() => ({ name })) : { name }) as never,
       swapComponent: async () => {},
     })
     answering({})

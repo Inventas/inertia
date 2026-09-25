@@ -195,8 +195,6 @@ class CurrentPage {
       this.baseGeneration++
     }
 
-    page = withoutAbandonedMarks(this.page, page)
-
     this.componentId = {}
 
     const componentId = this.componentId
@@ -206,20 +204,34 @@ class CurrentPage {
       page = { ...page, clearHistory: false }
     }
 
-    return Promise.all([this.resolve(page.component, page), this.resolveLayers(page)]).then(([component, layers]) => {
-      if (componentId !== this.componentId) {
-        // Component has changed since we started resolving this component, bail
-        return
-      }
+    return Promise.all([this.resolve(page.component, page), this.resolveLayers(page)]).then(
+      async ([component, layers]) => {
+        while (componentId === this.componentId) {
+          const onScreen = this.page
 
-      // A close may start while the initial layer component is still resolving.
-      // Do not let the older initial write put that layer back on screen.
-      if (initialRender && layersOf(page).some((layer) => layerAt(this.page, layer.id)?.closing)) {
-        return
-      }
+          // A close may start while the initial layer component is still resolving.
+          // Do not let the older initial write put that layer back on screen.
+          if (initialRender && layersOf(page).some((layer) => layerAt(onScreen, layer.id)?.closing)) {
+            return
+          }
 
-      return this.write(page, component, layers, options)
-    })
+          // A base response can also begin before a close and finish after it. Carry its mark
+          // into both the page and the resolved shell before writing browser history.
+          const landing = withoutAbandonedMarks(onScreen, page)
+          const landingLayers = landing === page ? layers : await this.resolveLayers(landing)
+
+          if (componentId !== this.componentId) {
+            return
+          }
+
+          if (onScreen !== this.page) {
+            continue
+          }
+
+          return this.write(landing, component, landingLayers, options)
+        }
+      },
+    )
   }
 
   // The history entry is written before the swap, so anything reading the address mid-swap sees the new one.

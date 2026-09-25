@@ -245,12 +245,27 @@ export const entriesToUnwind = (page: Page, id: string): number => {
 
 export const withoutClosingMarks = (page: Page): Page => mapLayers(page, ({ closing, ...layer }) => layer)
 
-// Marks from a close the incoming page no longer stands on (its layer remounted) are dropped with it.
+// Keep a close through an older response for the same layer, but drop marks when that layer remounted.
 export const withoutAbandonedMarks = (onScreen: Page, page: Page): Page => {
   const marked = layersOf(onScreen).filter((layer) => layer.closing)
+
+  if (marked.length === 0) {
+    return page
+  }
+
   const stands = marked.every((layer) => layerAt(page, layer.id)?.renderKey === layer.renderKey)
 
-  return marked.length === 0 || stands ? page : withoutClosingMarks(page)
+  if (!stands) {
+    return withoutClosingMarks(page)
+  }
+
+  if (marked.every((layer) => layerAt(page, layer.id)?.closing)) {
+    return page
+  }
+
+  const closing = new Set(marked.map((layer) => layer.id))
+
+  return mapLayers(page, (layer) => (closing.has(layer.id) ? { ...layer, closing: true } : layer))
 }
 
 export const withoutClosingLayers = (page: Page): Page => {

@@ -17,6 +17,7 @@ import {
   promoteDeepestLayer,
   promoteLayer,
   recordHistoryEntry,
+  withoutAbandonedMarks,
   withAddressHash,
 } from '../src/layers'
 import { layerDialogAttributes } from '../src/layers/dialog'
@@ -43,6 +44,32 @@ describe('isLayerResponse', () => {
 
   it('is false when the layer mark is null', () => {
     expect(isLayerResponse(pageWith({ layer: null } as Partial<Page>))).toBe(false)
+  })
+})
+
+describe('withoutAbandonedMarks', () => {
+  const open = composeLayer(
+    pageWith(),
+    pageWith({ component: 'Users/Edit', url: '/users/5/edit', layer: { key: 'Users/Edit' } }),
+    'layer-1',
+  )
+
+  it('carries a close through a base update for the same layer', () => {
+    const marked = markClosing(open, 'layer-1')
+    const incoming = { ...open, props: { users: ['updated'] }, layers: open.layers!.map((layer) => ({ ...layer })) }
+
+    expect(incoming.layers[0].closing).toBeUndefined()
+    expect(withoutAbandonedMarks(marked, incoming).layers?.[0].closing).toBe(true)
+  })
+
+  it('drops a close when the incoming layer remounted', () => {
+    const marked = markClosing(open, 'layer-1')
+    const incoming = {
+      ...marked,
+      layers: marked.layers!.map((layer) => ({ ...layer, renderKey: layer.renderKey + 1 })),
+    }
+
+    expect(withoutAbandonedMarks(marked, incoming).layers?.[0].closing).toBeUndefined()
   })
 })
 
